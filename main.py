@@ -1,40 +1,66 @@
-from fastapi import FastAPI, HTTPException, status
-from models import Todo
-from database import todo_list
+from fastapi import FastAPI, HTTPException
 from typing import List
+from models import Todo, TodoCreate
+import database
 
 app = FastAPI()
 
-# Get all todos
+database.load_data()
+
+
 @app.get("/todos", response_model=List[Todo])
 def get_todos():
-    return todo_list
+    return database.todo_list
 
-# Get a specific todo by ID
+
+@app.get("/todos/filter", response_model=List[Todo])
+def filter_todos(completed: bool):
+    filtered = [todo for todo in database.todo_list if todo.completed == completed]
+    return filtered
+
+
 @app.get("/todos/{todo_id}", response_model=Todo)
 def get_todo(todo_id: int):
-    if todo_id < 0 or todo_id >= len(todo_list):
-        raise HTTPException(status_code=404, detail="Todo not found")
-    return todo_list[todo_id]
+    for todo in database.todo_list:
+        if todo.id == todo_id:
+            return todo
+    raise HTTPException(status_code=404, detail="Todo not found")
 
-# Create a new todo
-@app.post("/todos", status_code=status.HTTP_201_CREATED)
-def create_todo(todo: Todo):
-    todo_list.append(todo)
-    return {"message": "Todo created successfully", "todo": todo}
 
-# Update an existing todo
-@app.put('/todos/{todo_id}', status_code=status.HTTP_200_OK)
-def update_todo(todo_id: int, todo: Todo):
-    if todo_id < 0 or todo_id >= len(todo_list):
-        raise HTTPException(status_code=404, detail="Todo not found")
-    todo_list[todo_id] = todo
-    return {"message": "Todo updated successfully", "todo": todo}
+@app.post("/todos")
+def create_todo(todo: TodoCreate):
+    new_todo = Todo(
+        id=database.current_id,
+        title=todo.title,
+        description=todo.description,
+        completed=todo.completed,
+    )
+    database.todo_list.append(new_todo)
+    database.current_id += 1
+    database.save_data()
+    return {"message": "Todo created successfully"}
 
-# Delete a todo
-@app.delete("/todos/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+@app.put("/todos/{todo_id}")
+def update_todo(todo_id: int, updated_todo: TodoCreate):
+    for index, todo in enumerate(database.todo_list):
+        if todo.id == todo_id:
+            database.todo_list[index] = Todo(
+                id=todo_id,
+                title=updated_todo.title,
+                description=updated_todo.description,
+                completed=updated_todo.completed,
+            )
+            database.save_data()
+            return {"message": "Todo updated successfully"}
+    raise HTTPException(status_code=404, detail="Todo not found")
+
+
+@app.delete("/todos/{todo_id}")
 def delete_todo(todo_id: int):
-    if todo_id < 0 or todo_id >= len(todo_list):
-        raise HTTPException(status_code=404, detail="Todo not found")
-    todo_list.pop(todo_id)
-    return {"message": "Todo deleted successfully"}
+    for index, todo in enumerate(database.todo_list):
+        if todo.id == todo_id:
+            database.todo_list.pop(index)
+            database.save_data()
+            return {"message": "Todo deleted successfully"}
+    raise HTTPException(status_code=404, detail="Todo not found")
